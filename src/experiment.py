@@ -1,14 +1,8 @@
 """实验主程序：5 折交叉验证 + 每折独立调参 + 指标汇总。
 
-协议（写进报告第 3 节）：
-    20 张带标注图像按编号 mod 5 分成 5 折（每折 4 张）。
-    对每个方案，在"其余 16 张"上网格搜索超参，取平均 Dice 最高者，
-    再在"本折 4 张"上评测 —— 即每个测试图像从未参与自己的调参，
-    汇总的 OOF（out-of-fold）指标与深度学习基线可直接比较。
-
-用法：
-    python -m src.experiment --data-dir <数据目录> --out results
+用法：python -m src.experiment --data-dir <数据目录> --out results
 """
+
 from __future__ import annotations
 
 import argparse
@@ -95,7 +89,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  fold {f}: 选中 {best_params}  训练均值 {best:.4f} → 本折 {mean_dice(rows):.4f}"
                   f"  ({time.perf_counter()-t0:.0f}s)")
 
-    # ---- 逐图指标 ----
     per_image = os.path.join(args.out, "metrics_per_image.csv")
     fields = ["method", "fold", "image", "dice", "se", "sp", "acc", "auc", "pred_ratio", "gt_ratio",
               "seconds", "params"]
@@ -105,7 +98,6 @@ def main(argv: list[str] | None = None) -> int:
         for r in all_rows:
             w.writerow({k: (round(r[k], 6) if isinstance(r.get(k), float) else r.get(k)) for k in fields})
 
-    # ---- 汇总 ----
     summary = []
     for key in ("C0", "C1", "C2", "C3"):
         rs = [r for r in all_rows if r["method"] == key]
@@ -142,7 +134,6 @@ def main(argv: list[str] | None = None) -> int:
               f"Sp={r['sp']:.4f}  Acc={r['acc']:.4f}  AUC={r['auc']:.4f}  {r['seconds']:.3f}s")
     print(f"\n结果已写入 {os.path.abspath(args.out)}")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

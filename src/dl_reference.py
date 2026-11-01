@@ -1,14 +1,5 @@
-"""深度学习对照基线：读取 retina/ 工程的 OOF 预测，按同一口径算指标。
+"""深度学习对照：读取 retina/ 工程的 OOF 概率图，按同一视场掩膜算指标。"""
 
-说明（报告第 5 节会引用）：
-    retina/ 是同一数据的 ResNet34+U-Net 方案，训练时做了 5 折交叉验证，
-    每个 checkpoint 目录的 oof/ 里保存的是"该折验证图"的概率图（512×512 float16），
-    因此这些预测对每张图而言都来自"没见过它"的模型，可以直接与本项目的 OOF 指标比较。
-
-    同一张图可能被多个 run 覆盖（例如 f0 与 f0_thick 都验证了同一折），
-    这里按图号去重、对概率图取平均（等价于多模型集成），从而不重复计权。
-    这是"集成上界"，与本项目单模型的对比要在报告里说明清楚。
-"""
 from __future__ import annotations
 
 import argparse
@@ -23,8 +14,7 @@ from . import io_utils, metrics
 
 
 def collect(oof_root: str, margin: int = 8, data_dir: str | None = None) -> tuple[list[dict], dict]:
-    """data_dir 给定时，用本项目同一套 fov_mask 重算评价区域（保证与 C0–C3 完全同口径）。"""
-    """返回 (逐图指标, 汇总)。按图号去重，多 run 的概率图取平均。"""
+    """按图号去重、对多 run 概率图取平均并计算指标。"""
     buckets: dict[str, dict] = {}
     if not os.path.isdir(oof_root):
         return [], {}

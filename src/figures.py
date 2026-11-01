@@ -1,10 +1,5 @@
-"""出图：定性对比、失效案例、以及"全局阈值为何失效"的直方图说明。
+"""出图：代表图定性对比、失效案例分解、灰度直方图。"""
 
-生成：
-    results/figures/fig_cases.png      3 张代表图的 5 列对比
-    results/figures/fig_failure.png    最差一张图 + 误差分解（漏检/误检）
-    results/figures/fig_hist.png       灰度直方图与 Otsu 阈值示意
-"""
 from __future__ import annotations
 
 import json
@@ -30,8 +25,8 @@ def gray3(x: np.ndarray) -> np.ndarray:
 def overlay(img01: np.ndarray, gt: np.ndarray, pred: np.ndarray) -> np.ndarray:
     base = gray3(img01)
     base = (base * 0.75).astype(np.uint8)
-    base[gt > 0] = (60, 200, 60)      # GT 绿色
-    base[pred > 0] = (255, 60, 60)    # 预测红色（重叠处偏黄）
+    base[gt > 0] = (60, 200, 60)
+    base[pred > 0] = (255, 60, 60)
     return base
 
 
@@ -50,7 +45,6 @@ def main(data_dir: str, out_dir: str = "results", size: int = 512, cases=("1", "
 
     samples = {s.idx: s for s in io_utils.load_dataset(data_dir, "train", size=size)}
 
-    # ---------- 图 1：代表图对比 ----------
     rows = []
     for idx in cases:
         s = samples[idx]
@@ -88,7 +82,6 @@ def main(data_dir: str, out_dir: str = "results", size: int = 512, cases=("1", "
     plt.close(fig)
     print("saved", p1)
 
-    # ---------- 图 2：失效案例 + 误差分解 ----------
     dice_all = {}
     for idx, s in samples.items():
         fold = (int(idx) - 1) % 5
@@ -125,12 +118,9 @@ def main(data_dir: str, out_dir: str = "results", size: int = 512, cases=("1", "
     plt.close(fig)
     print("saved", p2)
 
-    # ---------- 图 3：直方图与 Otsu ----------
     s = samples[cases[0]]
     gray = s.bgr.astype(np.float32).mean(axis=2)
-    # 内缩 10px：把视场边缘的黑色过渡带排除，否则直方图会多出一个 0 灰度尖峰
     inner = cv2.erode(s.fov, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))).astype(bool)
-    # 再剔除灰度 <15 的边缘过渡带（视网膜—黑的渐隐区），只保留真实视网膜像素
     band = inner & (gray > 15)
     vals = gray[band]
     fig, ax = plt.subplots(1, 2, figsize=(11, 3.2))
@@ -146,7 +136,6 @@ def main(data_dir: str, out_dir: str = "results", size: int = 512, cases=("1", "
     fig.savefig(p3, dpi=160)
     plt.close(fig)
     print("saved", p3)
-
 
 if __name__ == "__main__":
     import argparse

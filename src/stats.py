@@ -1,18 +1,8 @@
-"""统计检验：配对比较、置信区间、以及"20 张图能分辨多大差异"的量化。
+"""统计检验：配对比较、置信区间、可分辨效应量。
 
-为什么需要它：
-    本数据只有 20 张带标注图，单看均值容易高估结论。同一批图、同一折、只换方法，
-    属于**配对**设计，配对差值的标准差远小于图上 Dice 的标准差，因此用配对检验
-    可以在小样本下仍然给出可靠结论；同时给出"给定效应量需要多少张图"的下限，
-    让报告里的每个结论都带上不确定性说明。
-
-输出：
-    results/stats.csv   每个方案的均值/标准差/标准误/95% 置信区间
-    results/stats.md    配对比较表 + 可分辨效应量说明
-
-用法：
-    python -m src.stats --results results
+输出 results/stats.csv 与 stats.md；用法：python -m src.stats --results results
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,7 +27,7 @@ def _load(results: str) -> dict[str, dict[str, float]]:
 
 
 def _stats(a: np.ndarray, b: np.ndarray) -> dict:
-    """计算配对差异的检验结果；scipy 缺失时退化为正态近似。"""
+    """计算配对差值、置信区间、t 检验与 Wilcoxon 检验。"""
     d = b - a
     n = d.size
     mean = float(d.mean())
@@ -57,7 +47,6 @@ def _stats(a: np.ndarray, b: np.ndarray) -> dict:
         p_t, p_w = float("nan"), float("nan")
         tcrit = 1.96
     ci_lo, ci_hi = mean - tcrit * se, mean + tcrit * se
-    # 80% 功效、双侧 α=0.05 检出 delta 所需样本量（配对）
     n_need = int(np.ceil((2.802 * sd / 0.01) ** 2)) if sd > 1e-12 else 0
     return {"mean_diff": mean, "sd_diff": sd, "se": se, "dz": dz,
             "p_t": p_t, "p_wilcoxon": p_w, "ci_lo": ci_lo, "ci_hi": ci_hi,
@@ -73,7 +62,6 @@ def main(argv: list[str] | None = None) -> int:
     data = _load(args.results)
     imgs = sorted(data["C3"], key=lambda s: int(s))
 
-    # ---- 每个方案的置信区间 ----
     summary = []
     for m in METHODS:
         x = np.array([data[m][i] for i in imgs])
@@ -89,7 +77,6 @@ def main(argv: list[str] | None = None) -> int:
         for r in summary:
             w.writerow({k: (round(v, 6) if isinstance(v, float) else v) for k, v in r.items()})
 
-    # ---- 配对比较 ----
     pairs = []
     for a, b in PAIRS:
         x = np.array([data[a][i] for i in imgs])
@@ -105,7 +92,6 @@ def main(argv: list[str] | None = None) -> int:
         for r in pairs:
             w.writerow({k: (round(r[k], 6) if isinstance(r[k], float) else r[k]) for k in fields})
 
-    # ---- Markdown 报告 ----
     md = ["# 统计检验（配对设计，n = %d 张图）" % len(imgs), "",
           "| 方案 | Dice 均值 | 标准差 | 标准误 | 95% 置信区间 |", "|---|---|---|---|---|"]
     for r in summary:
@@ -134,7 +120,6 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {r['a']}→{r['b']}: {r['mean_diff']:+.4f} (p_t={r['p_t']:.2e})")
     print(f"结果写入 {os.path.join(os.path.abspath(args.results), 'stats.md')}")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

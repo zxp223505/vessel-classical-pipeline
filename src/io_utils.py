@@ -4,6 +4,7 @@
     train/image/*.jpg  彩色眼底图（BGR，584x565）
     train/label/*.jpg  二值血管标注，血管=255，背景=0
 """
+
 from __future__ import annotations
 
 import os
@@ -45,20 +46,13 @@ def _largest_component(m: np.ndarray) -> np.ndarray:
 
 
 def fov_mask(gray: np.ndarray, thresh: int = 8, erode: int = 8, rel: float = 0.35) -> np.ndarray:
-    """由灰度图估计视场（圆形视网膜区域）。
+    """估计圆形视网膜视场掩膜。
 
-    两步走：
-      1) 粗掩膜：灰度 > thresh（去掉四角纯黑）→ 闭运算 → 填洞 → 取最大连通域；
-      2) 细掩膜：用粗掩膜**内部的中位亮度**乘以 rel 作为相对阈值，再与粗掩膜取交。
-         这一步很关键：绝对阈值（>8）会把视网膜外那圈 10–20 灰度的渐隐带也圈进来，
-         而那条带上几乎没有真实血管——所有方法在那里都会产生伪响应。实测绝对阈值
-         给出的视场占比在 0.68–0.86 之间大幅波动（几何上应在 0.64 左右），改成相对
-         阈值后稳定在 0.637，且 GT 有 96% 落在掩膜内。
-      3) 最后内缩 erode 像素，把"视网膜—黑"的过渡带彻底排除在统计之外。
+    先用绝对阈值取粗掩膜，再以掩膜内部中位亮度乘以 rel 作相对阈值细化，最后内缩 erode 像素。
+    thresh: 绝对阈值下限；rel: 相对阈值系数；erode: 边缘内缩像素。
     """
     m = (gray > thresh).astype(np.uint8)
     m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
-    # 填洞：先补 1px 零边，再从 (0,0) 泛洪，避免"角点必然是背景"的假设
     pad = cv2.copyMakeBorder(m, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0)
     ff = pad.copy()
     cv2.floodFill(ff, None, (0, 0), 2)
@@ -66,7 +60,6 @@ def fov_mask(gray: np.ndarray, thresh: int = 8, erode: int = 8, rel: float = 0.3
     m = np.clip(m + holes, 0, 1).astype(np.uint8)
     m = _largest_component(m)
 
-    # 相对阈值细化：按视场内中位亮度定阈值，避免把视网膜外的渐隐带算进来
     inner = cv2.erode(m, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (41, 41)))
     if inner.any():
         med = float(np.median(gray[inner > 0]))

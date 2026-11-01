@@ -1,12 +1,5 @@
-"""四个对照方案（消融）的统一入口。
+"""四个对照方案 C0–C3 的统一入口（C0 基线 → C3 加后处理）。"""
 
-    C0  基线        : 三通道平均 + 全局 Otsu（课件 4.2.1 最大类间方差阈值）
-    C1  + 预处理    : 绿通道 + 边界填充 + CLAHE + 局部自适应阈值（课件 4.2.1 局部阈值）
-    C2  + 血管增强  : 多尺度 Frangi（尺度自适应 + 逐尺度归一化）+ 滞后阈值（课件 4.3/3.6）
-    C3  + 后处理    : 在 C2 上加面积/填孔/膨胀补偿（课件 3.5/4.3 连通域处理）
-
-每个方案都能单独跑、单独调参，便于交叉验证与消融。
-"""
 from __future__ import annotations
 
 import hashlib
@@ -17,7 +10,6 @@ import numpy as np
 
 from . import enhance, postprocess as pp, segment, vesselness
 
-# 公共的预处理定义
 ENH_C1 = {"channel": "green", "border": False, "clahe": True, "clip": 2.0, "grid": 8}
 ENH_C2 = {"channel": "green", "border": False, "top_hat": 51, "clahe": True, "clip": 2.0, "grid": 8}
 
@@ -51,9 +43,7 @@ CONFIGS: dict[str, dict] = {
 
 
 def _frangi_cache_path(cache_dir: str, idx: str, enh: dict, sigmas: list[float], fov: np.ndarray) -> str:
-    """缓存键必须包含**所有影响结果的输入**：实际 σ 列表，以及视场掩膜本身
-    （掩膜一变，增强图的归一化与边界填充都会变）。只记参数名会在改动实现后
-    静默命中旧缓存，让结果与代码对不上。"""
+    """由影像编号、预处理配置、实际 σ 列表与视场掩膜生成缓存文件名。"""
     mask_sig = hashlib.md5(np.ascontiguousarray(fov).tobytes()).hexdigest()[:8]
     raw = f"{idx}|{sorted(enh.items())}|{[round(s, 4) for s in sigmas]}|{mask_sig}"
     key = hashlib.md5(raw.encode("utf-8")).hexdigest()[:16]

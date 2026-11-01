@@ -1,8 +1,5 @@
-"""一键复现：交叉验证实验 → 出图 → 深度学习对照。
+"""一键复现：交叉验证实验 → 出图 → 统计检验 → 深度学习对照。"""
 
-用法（在项目根目录）：
-    python -m src.run_all --data-dir "C:\\path\\to\\segmentation" --out results
-"""
 from __future__ import annotations
 
 import argparse

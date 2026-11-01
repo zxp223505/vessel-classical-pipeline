@@ -1,12 +1,8 @@
-"""单图演示：一次跑完四个方案，打印逐级指标并存一张对比图。
+"""单图演示：跑完 C0–C3、打印逐级指标并存一张对比图。
 
-用途：理解整条流水线每一步在做什么，也方便录视频时逐列讲解。
-
-用法：
-    python -m src.demo --data-dir "C:\\path\\to\\segmentation" --image 5 --out results
-输出：
-    results/demo_<图像号>.png
+用法：python -m src.demo --data-dir <数据目录> --image 5 --out results
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,7 +21,7 @@ from . import enhance, io_utils, metrics, pipeline, vesselness  # noqa: E402
 
 
 def overlay(img01: np.ndarray, gt: np.ndarray | None, pred: np.ndarray | None) -> np.ndarray:
-    """把标注画成绿色、预测画成红色，重叠处偏黄。"""
+    """在增强图上叠加标注（绿）与预测（红）。"""
     base = (np.clip(img01 * 255, 0, 255).astype(np.uint8)[:, :, None].repeat(3, axis=2) * 0.75).astype(np.uint8)
     if gt is not None:
         base[gt > 0] = (60, 200, 60)
@@ -67,7 +63,6 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {key}: Dice={m['dice']:.4f}  Se={m['se']:.4f}  Sp={m['sp']:.4f}  AUC={m['auc']:.4f}"
               f"  ({out['seconds'] * 1000:.0f} ms)")
 
-    # 增强图与 Frangi 响应，用来看清每一步输入
     enh_cfg = pipeline.CONFIGS["C2"]["enhance"]
     img = enhance.prepare(sample.bgr, sample.fov, enh_cfg)
     sig = vesselness.sigma_range(sample.fov, 1.0, 0.006, 6)
@@ -95,7 +90,6 @@ def main(argv: list[str] | None = None) -> int:
     plt.close(fig)
     print(f"图像已保存：{out_path}")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())
