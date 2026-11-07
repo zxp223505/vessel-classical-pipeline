@@ -7,10 +7,13 @@ from __future__ import annotations
 
 import sys
 
+import os
+import shutil
+
 import cv2
 import numpy as np
 
-from src import io_utils, metrics, segment, vesselness
+from src import dl_reference, experiment, io_utils, metrics, segment, vesselness
 
 
 def check(name: str, cond: bool, detail: str = "") -> None:
@@ -91,6 +94,51 @@ def test_sigma_scaling() -> None:
           f"{s_small} -> {s_big}")
 
 
+def test_fov_transition_band() -> None:
+    """回归：视网膜外的渐隐带不能被算进视场（曾导致 Dice 虚高）。"""
+    img = np.zeros((240, 240), np.uint8)
+    cv2.circle(img, (120, 120), 90, 120, -1)
+    ring = np.zeros_like(img)
+    cv2.circle(ring, (120, 120), 100, 1, -1)
+    cv2.circle(ring, (120, 120), 88, 0, -1)
+    img[ring > 0] = 15
+    m = io_utils.fov_mask(img, erode=0)
+    ys, xs = np.nonzero(m)
+    r_max = float(np.sqrt((ys - 120) ** 2 + (xs - 120) ** 2).max())
+    check("FOV: 相对阈值排除视网膜外渐隐带", r_max <= 93, f"r_max={r_max:.1f}")
+
+
+def test_fold_assignment() -> None:
+    ids = [str(i) for i in range(1, 21)]
+    folds = {k: [x for x in ids if experiment.fold_of(x) == k] for k in range(5)}
+    flat = [x for v in folds.values() for x in v]
+    check("交叉验证: 5 折各 4 张且覆盖全部图", all(len(v) == 4 for v in folds.values()) and len(flat) == 20)
+
+
+def test_dl_resolution_filter() -> None:
+    """回归：不同分辨率的 OOF 混在一起会导致 np.stack 崩溃。"""
+    # 用仓库内的临时目录（沙箱可能不允许写系统 TEMP）
+    root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_tmp_dl")
+    shutil.rmtree(root, ignore_errors=True)
+    os.makedirs(root)
+    rng = np.random.default_rng(0)
+    for run, size in (("ok", 8), ("mixed", 4)):
+        d = os.path.join(root, run, "oof")
+        os.makedirs(d)
+        np.save(os.path.join(d, "1.npy"), rng.random((size, size)).astype(np.float16))
+        gt = np.zeros((size, size), np.uint8)
+        gt[2:5, 2:5] = 1
+        np.save(os.path.join(d, "1_gt.npy"), gt)
+        np.save(os.path.join(d, "1_fov.npy"), np.ones((size, size), np.uint8))
+    try:
+        rows, summary = dl_reference.collect(root, margin=0, size=8)
+        check("DL 对照: 只采用与评测网格同尺寸的 OOF",
+              summary["n"] == 1 and summary["skipped"] == 1,
+              f"n={summary['n']} skipped={summary['skipped']}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def main() -> int:
     test_dice()
     test_auc()
@@ -98,6 +146,9 @@ def main() -> int:
     test_hysteresis()
     test_fov()
     test_sigma_scaling()
+    test_fov_transition_band()
+    test_fold_assignment()
+    test_dl_resolution_filter()
     print("\n全部通过")
     return 0
 

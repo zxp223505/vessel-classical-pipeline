@@ -44,6 +44,8 @@ def main(argv: list[str] | None = None) -> int:
 
     folds_path = os.path.join(args.out, "folds.json")
     folds = json.load(open(folds_path, encoding="utf-8")) if os.path.exists(folds_path) else {}
+    if not folds:
+        print("提示：未找到 results/folds.json，将使用默认超参；指标可能与报告中的 OOF 结果不同")
     fold = (int(sample.idx) - 1) % 5
 
     def params_for(key: str) -> dict:

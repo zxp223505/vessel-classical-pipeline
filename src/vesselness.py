@@ -1,9 +1,10 @@
 """多尺度 Frangi 血管增强（Hessian 滤波）。"""
-
 from __future__ import annotations
 
 import numpy as np
 from scipy import ndimage as ndi
+
+CACHE_VERSION = 1
 
 
 def _hessian_eigenvalues(img: np.ndarray, sigma: float) -> tuple[np.ndarray, np.ndarray]:

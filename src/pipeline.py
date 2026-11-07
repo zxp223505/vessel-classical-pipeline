@@ -45,7 +45,8 @@ CONFIGS: dict[str, dict] = {
 def _frangi_cache_path(cache_dir: str, idx: str, enh: dict, sigmas: list[float], fov: np.ndarray) -> str:
     """由影像编号、预处理配置、实际 σ 列表与视场掩膜生成缓存文件名。"""
     mask_sig = hashlib.md5(np.ascontiguousarray(fov).tobytes()).hexdigest()[:8]
-    raw = f"{idx}|{sorted(enh.items())}|{[round(s, 4) for s in sigmas]}|{mask_sig}"
+    raw = (f"v{vesselness.CACHE_VERSION}|{idx}|{sorted(enh.items())}"
+           f"|{[round(s, 4) for s in sigmas]}|{mask_sig}")
     key = hashlib.md5(raw.encode("utf-8")).hexdigest()[:16]
     return os.path.join(cache_dir, f"frangi_{idx}_{key}.npy")
 
