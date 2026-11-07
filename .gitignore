@@ -1,7 +1,6 @@
 __pycache__/
 *.pyc
 results/cache/
-results/figures/*.png
 debug/
 *.npz
 results/cache*/
