@@ -16,7 +16,7 @@ ENH_C2 = {"channel": "green", "border": False, "top_hat": 51, "clahe": True, "cl
 CONFIGS: dict[str, dict] = {
     "C0": {
         "label": "C0 基线：灰度 + 全局 Otsu",
-        "enhance": {"channel": "gray", "border": True, "clahe": False},
+        "enhance": {"channel": "gray", "border": False, "clahe": False},
         "method": "otsu",
         "default": {},
     },

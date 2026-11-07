@@ -13,9 +13,14 @@ import numpy as np
 from . import io_utils, metrics
 
 
-def collect(oof_root: str, margin: int = 8, data_dir: str | None = None) -> tuple[list[dict], dict]:
-    """按图号去重、对多 run 概率图取平均并计算指标。"""
+def collect(oof_root: str, margin: int = 8, data_dir: str | None = None,
+            size: int = 512) -> tuple[list[dict], dict]:
+    """按图号去重、对多 run 概率图取平均并计算指标。
+
+    size: 只采用该边长的 OOF（与本文 512×512 评测网格一致），其他分辨率的 run 跳过。
+    """
     buckets: dict[str, dict] = {}
+    skipped = 0
     if not os.path.isdir(oof_root):
         return [], {}
     for run in sorted(os.listdir(oof_root)):
@@ -31,7 +36,13 @@ def collect(oof_root: str, margin: int = 8, data_dir: str | None = None) -> tupl
             if not (os.path.exists(gt_p) and os.path.exists(fov_p)):
                 continue
             prob = np.load(os.path.join(d, f)).astype(np.float32)
-            b = buckets.setdefault(idx, {"probs": [], "gt": np.load(gt_p), "fov": np.load(fov_p), "runs": []})
+            gt = np.load(gt_p)
+            fov = np.load(fov_p)
+            # 只采用与评测网格同尺寸的 OOF；不同分辨率的 run 混在一起无法逐像素平均
+            if prob.shape != gt.shape or prob.shape[0] != prob.shape[1] or prob.shape[0] != size:
+                skipped += 1
+                continue
+            b = buckets.setdefault(idx, {"probs": [], "gt": gt, "fov": fov, "runs": []})
             b["probs"].append(prob)
             b["runs"].append(run)
 
@@ -58,11 +69,13 @@ def collect(oof_root: str, margin: int = 8, data_dir: str | None = None) -> tupl
     for k in ("dice", "se", "sp", "acc", "auc"):
         summary[k] = float(np.mean([r[k] for r in rows]))
     summary["runs_total"] = sum(r["n_runs"] for r in rows)
+    summary["skipped"] = skipped
     return rows, summary
 
 
-def main(oof_root: str, out: str, margin: int = 8, data_dir: str | None = None) -> None:
-    rows, summary = collect(oof_root, margin=margin, data_dir=data_dir)
+def main(oof_root: str, out: str, margin: int = 8, data_dir: str | None = None,
+         size: int = 512) -> None:
+    rows, summary = collect(oof_root, margin=margin, data_dir=data_dir, size=size)
     if not rows:
         print("未找到 OOF 预测，跳过深度学习对照")
         return
@@ -74,7 +87,8 @@ def main(oof_root: str, out: str, margin: int = 8, data_dir: str | None = None) 
         w.writeheader()
         for r in rows:
             w.writerow({k: (round(r[k], 6) if isinstance(r[k], float) else r[k]) for k in fields})
-    print(f"{summary['n']} 张图（{summary['runs_total']} 条 OOF 输出，同图取平均）：", end=" ")
+    print(f"{summary['n']} 张图（{summary['runs_total']} 条 OOF 输出，同图取平均；"
+          f"跳过 {summary['skipped']} 条非 {size}×{size} 输出）：", end=" ")
     for m in ("dice", "se", "sp", "acc", "auc"):
         print(f"{m}={summary[m]:.4f}", end="  ")
     print(f"\n写入 {path}")
@@ -87,5 +101,6 @@ if __name__ == "__main__":
     ap.add_argument("--margin", type=int, default=8, help="视场过渡带内缩像素")
     ap.add_argument("--data-dir", default=os.environ.get("VESSEL_DATA", "data/segmentation"),
                     help="给定时用同一套掩膜重算评价区域")
+    ap.add_argument("--size", type=int, default=512, help="只采用该边长的 OOF")
     a = ap.parse_args()
-    sys.exit(main(a.oof_root, a.out, a.margin, a.data_dir))
+    sys.exit(main(a.oof_root, a.out, a.margin, a.data_dir, a.size))

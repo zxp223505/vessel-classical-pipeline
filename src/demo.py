@@ -10,7 +10,6 @@ import json
 import os
 import sys
 
-import cv2
 import matplotlib
 import numpy as np
 

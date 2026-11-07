@@ -59,7 +59,7 @@ class Report:
     def _footer(self, sec):
         p = sec.footer.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        r = p.add_run("基于经典图像处理的视网膜血管分割　·　图像处理课程大作业")
+        r = p.add_run("图像处理课程大作业　·　视网膜血管分割")
         set_font(r, SONG, 8, color=RGBColor(0x80, 0x80, 0x80))
 
     def p(self, text, size=BODY, bold=False, indent=True, before=0, after=4, font=SONG,
@@ -200,6 +200,8 @@ def load_stats(results: str):
 
 
 def main(results: str, fig_dir: str, out_path: str):
+    meta_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "report", "meta.json")
+    meta = json.load(open(meta_path, encoding="utf-8")) if os.path.exists(meta_path) else {}
     summary = {r["method"]: r for r in load_summary(results)}
     per_image = load_per_image(results)
     dl = load_dl(results)
@@ -221,11 +223,15 @@ def main(results: str, fig_dir: str, out_path: str):
     sub = R.doc.add_paragraph()
     sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
     sub.paragraph_format.space_after = Pt(20)
-    set_font(sub.add_run("基于局部自适应阈值与形态学后处理的视网膜血管分割"), HEI, 13.5,
+    set_font(sub.add_run("基于多尺度 Frangi 增强与局部自适应阈值的视网膜血管分割"), HEI, 13.5,
              color=RGBColor(0x33, 0x33, 0x33))
 
-    info = [("姓　　名", "（填写）"), ("学　　号", "（填写）"), ("专　　业", "（填写）"),
-            ("课程名称", "图像处理"), ("完成日期", "2026 年 11 月")]
+    info = [("姓　　名", meta.get("name") or "（填写）"),
+            ("学　　号", meta.get("student_id") or "（填写）"),
+            ("专　　业", meta.get("major") or "（填写）"),
+            ("课程名称", meta.get("course") or "图像处理")]
+    if meta.get("date"):
+        info.append(("完成日期", meta["date"]))
     tb = R.doc.add_table(rows=0, cols=2)
     tb.alignment = WD_TABLE_ALIGNMENT.CENTER
     for k, v in info:
@@ -238,10 +244,26 @@ def main(results: str, fig_dir: str, out_path: str):
             set_font(par.add_run(txt), SONG, 11)
     R.doc.add_page_break()
 
+    R.h1("摘　要")
+    R.p("针对视网膜血管分割中对比度低、照明不均、细血管仅 1–2 像素宽的问题，本文在 DRIVE 眼底数据上"
+        "搭建了一条纯经典图像处理的流水线：先用绿通道与 CLAHE 做局部对比度增强，再用多尺度 Hessian（Frangi）"
+        "提取管状结构，最后以滞后双阈值与形态学后处理得到血管掩膜。实验采用 5 折交叉验证，每一折的超参数都在"
+        "其余 16 张图上独立网格搜索，报告的是每张图都未参与自身调参的 OOF 指标。结果表明：全局 Otsu 在本数据上"
+        "基本不可用（Dice 0.257）；改用局部自适应阈值后升到 0.662；加入尺度自适应与逐尺度归一化的 Frangi 增强"
+        "再升到 0.696；后处理只带来 +0.0002，说明它不是主要贡献。作为参照，同数据的 ResNet34+U-Net 集成达到 0.807，"
+        "差距集中在细小血管的召回与排序能力。本文还发现并修正了一个容易被忽略的评测问题：视场掩膜若用绝对阈值估计，"
+        "会把视网膜外的渐隐带算进评价区，仅此一项就能让 Dice 虚高或虚低 0.1 以上。", after=6)
+    R.p("关键词：视网膜血管分割；Frangi 增强；局部自适应阈值；交叉验证；DRIVE 数据集", indent=False, bold=True, after=10)
+
+    R.doc.add_page_break()
+
     # ---------------- 一、Github 链接 ----------------
     R.h1("1. Github 链接")
-    R.p("仓库地址：https://github.com/（待填：你的 GitHub 用户名）/vessel-classical-pipeline")
+    _repo = meta.get("repo_url") or "https://github.com/<你的用户名>/vessel-classical-pipeline"
+    _u = R.p(f"仓库地址：{_repo}", size=9.5)
+    _u.paragraph_format.space_after = Pt(4)
     R.p("代码已按可复现的方式组织，仓库根目录结构如下：", after=2)
+    R.caption("表 1　仓库目录与模块说明")
     R.table(
         ["路径", "内容"],
         [
@@ -252,20 +274,22 @@ def main(results: str, fig_dir: str, out_path: str):
             ["src/metrics.py", "Dice / Se / Sp / Acc / AUC"],
             ["src/pipeline.py", "C0–C3 四个对照方案的统一入口"],
             ["src/experiment.py", "5 折交叉验证 + 每折独立调参 + 指标导出"],
+            ["src/stats.py", "配对 t / Wilcoxon 检验、置信区间、可分辨效应量"],
+            ["src/demo.py", "单图演示：四个方案逐级对比并打印指标"],
+            ["src/run_all.py", "一键复现入口（实验 → 出图 → 统计 → DL 对照）"],
             ["src/figures.py", "定性对比图、失效分析图、直方图"],
             ["results/", "指标 CSV、汇总、图片（运行后生成）"],
         ],
         widths=[4.6, 11.4],
     )
-    R.caption("表 1　仓库目录与模块说明")
     R.p("复现命令（Windows / Linux 通用）：", after=2)
-    code = R.doc.add_paragraph()
-    code.paragraph_format.left_indent = Pt(18)
-    code.paragraph_format.space_after = Pt(6)
-    code.paragraph_format.line_spacing = 1.25
-    set_font(code.add_run(
-        "pip install -r requirements.txt\n"
-        "python -m src.run_all --data-dir <DRIVE 数据目录> --out results"), "Consolas", 8.5)
+    for _line in ("pip install -r requirements.txt",
+                  "python -m src.run_all --data-dir <DRIVE数据目录> --out results"):
+        _p = R.doc.add_paragraph()
+        _p.paragraph_format.left_indent = Pt(18)
+        _p.paragraph_format.space_after = Pt(2)
+        _p.paragraph_format.line_spacing = 1.1
+        set_font(_p.add_run(_line), "Consolas", 8)
     R.p("提交前只需三步：① 在本目录 git init && git add && git commit；② 在 GitHub 新建空仓库；"
         "③ git remote add origin <地址> && git push -u origin main。"
         "报告中的指标全部由 results/summary.csv 直接导出，可逐项复算。")
@@ -273,8 +297,8 @@ def main(results: str, fig_dir: str, out_path: str):
     # ---------------- 二、任务描述 ----------------
     R.h1("2. 任务描述：我要做什么")
     R.h2("2.1 问题定义")
-    R.p("给定一幅彩色眼底图（584×565，3 通道），输出一张同尺寸的二值图，逐像素判定该点是否为视网膜血管。"
-        "这是一个典型的二类像素级分割问题：血管像素只占视场的 8%–10%，正负样本严重不平衡，"
+    R.p("给定一幅彩色眼底图（宽 565 × 高 584，3 通道），输出一张同尺寸的二值图，逐像素判定该点是否为视网膜血管。"
+        "这是一个典型的二类像素级分割问题：全图血管像素约占 8.6%，在视场掩膜内约占 13%，正负样本严重不平衡，"
         "因此不能只看准确率，必须看 Dice 与敏感度。")
     R.h2("2.2 这件事为什么值得做")
     R.p("视网膜血管的形态（宽度、弯曲度、分叉）与高血压、糖尿病视网膜病变等疾病直接相关，"
@@ -290,6 +314,7 @@ def main(results: str, fig_dir: str, out_path: str):
     R.p("整条流水线分成四段，每段只承担一件事，便于逐段做消融：预处理（绿通道 + CLAHE，并统一把视场过渡带内缩 8 px）→ 血管增强"
         "（多尺度 Frangi）或直接分割 → 分割（局部自适应阈值 / 滞后阈值）→ 后处理（面积过滤、填孔、膨胀、视场裁剪）。"
         "在此基础上构造了四个对照方案 C0–C3。")
+    R.caption("表 2　处理流水线：每一段的输入输出、做法、参数与对应课件内容")
     R.table(
         ["阶段", "输入 → 输出", "具体处理", "关键参数 / 代码", "对应课件"],
         [
@@ -314,7 +339,6 @@ def main(results: str, fig_dir: str, out_path: str):
         ],
         widths=[1.5, 3.3, 5.1, 4.3, 2.3],
     )
-    R.caption("表 2　处理流水线：每一段的输入输出、做法、参数与对应课件内容")
 
     # ---------------- 三、数据描述 ----------------
     R.h1("3. 数据描述：我用的是什么数据")
@@ -326,20 +350,20 @@ def main(results: str, fig_dir: str, out_path: str):
         "于 2004 年随论文发布（Staal 等，IEEE TMI），现托管于 Grand Challenge 平台。其 training 部分共 20 张"
         "带像素级标注的图像，即本项目使用的全部数据——不是从更大数据集中抽样，也不存在“只用了一小部分”的问题。"
         "test 部分 20 张的标注不公开，只能提交到平台评分，因此本项目的评测采用 training 部分的 5 折交叉验证。")
+    R.caption("表 3　数据概况")
     R.table(
         ["项目", "数值 / 说明"],
         [
             ["数据规模", "20 张有标注（训练）+ 20 张无标注（测试）"],
-            ["图像尺寸", "原始 584×565 → 统一 512×512"],
+            ["图像尺寸", "原始 宽 565 × 高 584 → 统一 512×512"],
             ["标注形式", "像素级二值掩膜，血管 = 255"],
-            ["血管像素占比", "8.6%（逐图 6.6%–11.7%），与 DRIVE 原始标注一致"],
+            ["血管像素占比", "全图约 8.6%；视场掩膜内约 13%（逐图 6.6%–11.7% 按全图统计）"],
             ["视场（FOV）占比", "约 64%：圆形视网膜区域（相对阈值估计），并内缩 8px 排除过渡带"],
             ["标注血管宽度", "中位半宽约 1.0 px（512 尺度），属于典型的细结构分割"],
             ["划分方式", "按图编号 mod 5 分 5 折，每折 4 张；调参与评测严格分离"],
         ],
         widths=[3.6, 12.4],
     )
-    R.caption("表 3　数据概况")
     R.h2("3.2 划分与调参协议")
     R.p("交叉验证的设计要点是“每张图的超参不来自它自己”。具体做法：把 20 张图按编号 mod 5 分成 5 折；"
         "对每个方案，在其余 16 张上网格搜索超参（局部阈值的 C、Frangi 的双分位数、后处理的面积阈值与膨胀半径），"
@@ -350,7 +374,8 @@ def main(results: str, fig_dir: str, out_path: str):
     R.h2("3.3 评价指标")
     R.p("全部指标在视场掩膜内计算（视场外的纯黑区域不参与统计）：Dice = 2TP / (2TP + FP + FN) 为主指标；"
         "Se = TP / (TP + FN) 反映细血管召回；Sp = TN / (TN + FP) 反映伪响应抑制；"
-        "AUC 用各方法输出的连续响应图（或 1−增强图）排序计算，衡量“排序质量”而不受单一阈值影响。")
+        "AUC 用连续响应图排序计算，衡量“排序质量”而不受单一阈值影响。具体地：C2 / C3 直接用 Frangi 响应图，"
+        "C0 / C1 用 1 − 增强图（越暗越像血管）作为得分，因此阈值类方法也有可比的 AUC。")
     R.h2("3.4 数据的一个关键特点")
     R.p("视场内灰度直方图基本是单峰的（图 1 右）：照明梯度把“血管暗、背景亮”的双峰结构抹平了。"
         "这直接解释了为什么全局 Otsu 会失效——它在直方图上找到的“最佳分割点”切开的其实是周边暗区与中心亮区，"
@@ -372,7 +397,7 @@ def main(results: str, fig_dir: str, out_path: str):
     R.p("尝试二（小收益）：把评价掩膜内缩从 4 px 提到 8 px，C3 的 Dice 从 0.595 提到 0.602，环形伪响应消失。")
     R.p("尝试三（关键）：把绝对阈值改成相对阈值——先由粗掩膜估出视网膜内部的中位亮度，再取 0.35×中位亮度作为边界。"
         "绝对阈值下视场占比在 0.68–0.86 之间剧烈波动（几何上应在 0.64 左右），相对阈值后稳定在 0.637，"
-        "且 GT 仍有 96% 落在掩膜内。这一步把 C0 从 0.019 提到 0.257、C1 从 0.565 提到 0.662、C2 从 0.604 提到 0.696。"
+        "且 GT 仍有 96% 落在掩膜内。这一步把 C0 从 0.019 提到 0.257；C1 从 0.565 提到 0.662；C2 从 0.604 提到 0.696。"
         "结论很直接：评价区域的定义本身就会改变结论，它比大多数算法改动影响都大；做事之前先把统计口径钉死。")
     R.h2("4.2 改动二：Frangi 的两个改造（尺度自适应 + 逐尺度归一化）")
     R.p("教科书版 Frangi 用固定尺度列表（如 σ=1…10）并直接取各尺度最大值，问题有二："
@@ -385,19 +410,20 @@ def main(results: str, fig_dir: str, out_path: str):
         "其中 Rb = |λ1|/|λ2|、S = √(λ1²+λ2²)，β = 0.5，c 取该尺度 S 的 99.5% 分位的 0.5 倍。")
     R.h2("4.3 改动三：用局部自适应阈值替代全局 Otsu")
     R.p(f"全局 Otsu 在本文数据上基本不可用（第 5 节的 C0 只有 {float(summary['C0']['dice']):.3f}）。"
-        "改为对每个像素与其邻域的高斯加权均值比较"
-        "（cv2.adaptiveThreshold，block = 21，C 由交叉验证选定），相当于把“依赖坐标的阈值”落到实现上，"
-        "对径向照明梯度天然免疫。")
+        "改为对每个像素与其邻域的高斯加权均值比较（cv2.adaptiveThreshold），相当于把“依赖坐标的阈值”"
+        "落到实现上，对径向照明梯度天然免疫。block 与 C 都参与交叉验证：五折独立搜索后都选中了 "
+        "block = 31、C = 16，因此表 5 的 C1 / C3 实际用的是这组值；代码里的默认值 21 / 12 仅作为搜索起点。")
     R.h2("4.4 改动四：滞后阈值与后处理链")
     R.p("在 Frangi 响应上使用双阈值：高分位做种子、低分位做生长（segment.hysteresis），保证细血管的连通性；"
         "在阈值化之后再加一条后处理链：面积过滤（去掉 < 40 px 的孤立噪声）→ 填掉被前景包围的小孔（< 40 px）"
         "→ 膨胀补偿（可选）→ 视场裁剪。后处理参数与分割阈值一起参与交叉验证。")
     R.h2("4.5 参数与搜索范围")
+    R.caption("表 4　参数与交叉验证中的搜索范围")
     R.table(
         ["参数", "含义", "默认值", "搜索范围"],
         [
-            ["block", "局部阈值窗口", "21", "15 / 21 / 31"],
-            ["C", "局部阈值偏移（越大越严格）", "12", "6–18（步长 2）"],
+            ["block", "局部阈值窗口", "21（搜索起点）", "15 / 21 / 31"],
+            ["C", "局部阈值偏移（越大越严格）", "12（搜索起点）", "6–18（步长 2）"],
             ["q_low / q_high", "滞后阈值双分位", "0.90 / 0.99", "0.80–0.93 / 0.97–0.995"],
             ["min_area", "面积过滤阈值（px）", "40", "20 / 40 / 60"],
             ["dilate", "膨胀半径（px）", "1", "0 / 1"],
@@ -405,7 +431,6 @@ def main(results: str, fig_dir: str, out_path: str):
         ],
         widths=[3.2, 6.0, 3.6, 3.2],
     )
-    R.caption("表 4　参数与交叉验证中的搜索范围")
 
     # ---------------- 五、结果对比 ----------------
     R.h1("5. 结果对比：结果有什么变化")
@@ -420,10 +445,10 @@ def main(results: str, fig_dir: str, out_path: str):
     if dl:
         rows.append(["DL(参考)", f"{dl['dice']:.3f}", f"{dl['se']:.3f}", f"{dl['sp']:.3f}",
                      f"{dl['acc']:.3f}", f"{dl['auc']:.3f}", "GPU 2 h"])
-    R.table(["方案", "Dice", "Se", "Sp", "Acc", "AUC", "单图耗时"], rows,
-            widths=[2.0, 3.9, 2.0, 2.0, 2.0, 2.0, 2.1])
     R.caption(f"表 5　5 折交叉验证（OOF）结果；DL 为同数据 ResNet34+U-Net 的 {dl['n']} 张图 OOF 集成" if dl
               else "表 5　5 折交叉验证（OOF）结果")
+    R.table(["方案", "Dice", "Se", "Sp", "Acc", "AUC", "单图耗时"], rows,
+            widths=[2.0, 3.9, 2.0, 2.0, 2.0, 2.0, 2.1])
     R.p("说明：C0–C3 均为同一数据、同一划分、同一指标下的 5 折交叉验证结果，且每折独立调参（每张图的超参"
         "不来自它自己）。DL 一行由既有工程的 OOF 概率图按图平均得到"
         + (f"（{dl['n']} 张图、{dl['runs']} 条模型输出）" if dl else "")
@@ -460,15 +485,17 @@ def main(results: str, fig_dir: str, out_path: str):
     c0_pred = float(np.mean([float(r["pred_ratio"]) for r in per_image if r["method"] == "C0"]))
     gt_ratio = float(np.mean([float(r["gt_ratio"]) for r in per_image if r["method"] == "C3"]))
     R.p(f"（1）全局阈值（C0，Dice {d['C0']:.3f}）基本不可用。它把 {c0_pred * 100:.0f}% 的像素判成血管"
-        f"（真值只有 {gt_ratio * 100:.1f}%），这些像素集中在外周暗区，与图 1 的直方图分析一致。"
+        f"（视场内真值约 {gt_ratio * 100:.1f}%），这些像素集中在外周暗区，与图 1 的直方图分析一致。"
         "这一步的意义是给后续所有改进提供一个“不可用”的起点，而不是一个被故意削弱的对照。")
     R.p(f"（2）预处理 + 局部自适应阈值（C1，Dice {d['C1']:.3f}）带来 {d['C1'] - d['C0']:+.3f} 的提升，"
         f"是本项目里最大的一次跃迁。敏感度 {se['C1']:.3f}、特异度 {sp['C1']:.3f}，说明它已经能稳定抓到"
         "主要血管，但召回偏低——细血管和低对比度区域仍然漏。")
     R.p(f"（3）换成多尺度 Hessian 增强 + 滞后阈值（C2，Dice {d['C2']:.3f}）再拿 {d['C2'] - d['C1']:+.3f}"
         + (f"（配对 p≈{float(pair12['p_t']):.0e}，表 6）" if stats_pairs else "")
-        + f"，敏感度从 {se['C1']:.3f} 升到 {se['C2']:.3f}，AUC 从 {au['C1']:.3f} "
-        f"升到 {au['C2']:.3f}。这一档有个值得写进报告的实现细节：σ 上限若按视场包围盒的对角线估计会偏大 1.41 倍，"
+        + f"。敏感度基本持平（{se['C1']:.3f} → {se['C2']:.3f}），真正变化的是特异度"
+        f"（{sp['C1']:.3f} → {sp['C2']:.3f}）与 AUC（{au['C1']:.3f} → {au['C2']:.3f}）："
+        "Dice 的提升来自伪响应抑制和排序质量改善，而不是把更多细血管找回来。"
+        "这一档还有个值得写进报告的实现细节：σ 上限若按视场包围盒的对角线估计会偏大 1.41 倍，"
         "尺度一旦偏大，细血管响应就被粗血管淹没，Dice 会退回 0.55 附近；改成按视场直径估计后，"
         "同一套代码立刻多出 +0.044。这也解释了为什么“增强有没有用”经常取决于尺度怎么定，而不是增强本身。")
     R.p(f"（4）后处理（C3，Dice {d['C3']:.3f}）在 C2 上再拿 {d['C3'] - d['C2']:+.4f}"
@@ -482,22 +509,26 @@ def main(results: str, fig_dir: str, out_path: str):
         ratio = float(summary["C3"]["dice"]) / dl["dice"] * 100
         R.p(f"同数据的 ResNet34+U-Net 集成达到 Dice {dl['dice']:.3f}（{dl['n']} 张图 OOF），"
             f"比本项目的 C3（{float(summary['C3']['dice']):.3f}）高 {gap:.3f}。差距不在整体结构，而在两处："
-            f"一是细血管的连通性（DL 的 Se 为 {dl['se']:.3f}，本文 {float(summary['C3']['se']):.3f}）；"
-            f"二是对病灶、渗出等干扰区域的抑制（DL 的 Sp 为 {dl['sp']:.3f}，本文 {float(summary['C3']['sp']):.3f}）。"
-            f"从指标上看，DL 的 AUC {dl['auc']:.3f} 与本文 C2 的 {float(summary['C2']['auc']):.3f} 之差，"
-            "正是“特征学习”带来的排序能力提升。")
-        R.p(f"换个角度看，本项目用 CPU 0.03 s/张、无训练、全流程可解释的代价，拿到了 DL 约 {ratio:.0f}% 的 Dice；"
+            f"一是细血管召回（DL 的 Se 为 {dl['se']:.3f}，本文 {float(summary['C3']['se']):.3f}）；"
+            f"二是排序质量（DL 的 AUC {dl['auc']:.3f}，本文 {float(summary['C2']['auc']):.3f}）。"
+            f"值得注意的是本文的特异度反而略高（{float(summary['C3']['sp']):.3f} vs {dl['sp']:.3f}），"
+            "说明经典方法对伪阳性的控制并不差，落后主要发生在“把断掉的细血管接回来”这件事上。")
+        R.p(f"换个角度看，本项目用 CPU 0.01–0.03 s/张（缓存命中后约 0.01 s，首次含 Frangi 计算约 0.07 s）、"
+            f"无训练、全流程可解释的代价，拿到了 DL 约 {ratio:.0f}% 的 Dice；"
             "在需要部署到低算力设备、或需要逐项解释“为什么这里判错”的场景下，仍有实用价值。")
     R.h2("5.4 失效案例")
     R.figure(os.path.join(fig_dir, "fig_failure.png"), 15.0,
              f"图 3　最好（#{best}）与最差（#{worst}）样本的误差分解，以及 20 张图的 Dice 分布")
     R.p(f"最差的一张是 #{worst}（Dice {float(c3[worst]['dice']):.3f}），这类图像有三个共同点："
         "病灶/渗出造成大块亮斑，局部阈值把它们当作背景而把周围暗环判成血管；黄斑区对比度低，细血管几乎不可见；"
-        "视盘边缘的亮暗过渡被误判。三类误差都指向同一个原因：仅依赖局部亮度对比，缺少形状与连续性的约束。")
+        "视盘边缘的亮暗过渡被误判。三类误差指向同一个原因：方法仍主要依赖局部亮度对比与 Hessian 响应，"
+        "缺少全局的拓扑与连续性约束。")
     R.h2("5.5 效率")
-    R.p(f"C3 在 512×512 上单图 {float(summary['C3']['seconds']):.3f} s（CPU，单进程 numpy/OpenCV）；"
-        "Frangi 响应可以缓存，首次运行 C2 约 0.07 s/张，缓存命中后降到 0.01 s 量级。"
-        "包含 5 折网格搜索的完整实验在普通笔记本上约 4 分钟跑完（含出图与统计检验）。"
+    R.p(f"表 5 的“单图耗时”是纯分割耗时：不含图像读取，且 Frangi 响应已缓存。C3 在 512×512 上为 "
+        f"{float(summary['C3']['seconds']):.3f} s/张；首次运行（无缓存）C2 约 0.07 s/张，缓存命中后约 0.01 s/张；"
+        "含读图与预处理的端到端约 0.03 s/张。C2 在表 5 中比 C1 还快，正是因为它的 Frangi 响应走了缓存，"
+        "而 C1 每次都要重算自适应阈值。包含 5 折网格搜索的完整实验在普通笔记本上约 4 分钟跑完"
+        "（含出图与统计检验）。"
         "对比之下，深度学习方案的 5 折训练在 4 GB 显存上约 2 小时；若只做推理，两者差距更大。")
     R.h2("5.6 小结与可继续改进的方向")
     _c = {k: float(summary[k]["dice"]) for k in ("C0", "C1", "C2", "C3")}
@@ -506,7 +537,8 @@ def main(results: str, fig_dir: str, out_path: str):
     for s in [
         f"结论一：全局阈值不适合眼底图（{_c['C0']:.3f}），局部自适应阈值是性价比最高的一步（{_c['C1'] - _c['C0']:+.3f}）；",
         f"结论二：尺度设置正确的 Hessian 增强 + 滞后阈值再带来 {_c['C2'] - _c['C1']:+.3f}，是第二大的单项收益；",
-        f"结论三：后处理只补上 {_c['C3'] - _c['C2']:+.4f}——它能补偿“偏细”的分割器，对已经足够厚的输出作用有限；",
+        f"结论三：后处理只补上 {_c['C3'] - _c['C2']:+.4f}；它能补偿“偏细”的分割器，但对已经足够厚的输出作用有限。"
+        "因此本文的主要贡献是局部自适应阈值与多尺度 Frangi 增强，形态学后处理不是关键环节。",
         f"结论四：与同数据的深度学习集成（{_dl}）仍差约 {_gap}，差距集中在细小血管的连通性；",
         "后续可做：把 Frangi 响应作为局部阈值的软先验做加权融合、多方向形态学闭运算连接断点，"
         "以及在更大数据（CHASE_DB1 / STARE）上验证泛化。",
@@ -521,9 +553,12 @@ def main(results: str, fig_dir: str, out_path: str):
         rows.append([img, f"{float(r['dice']):.3f}", f"{float(r['se']):.3f}",
                      f"{float(r['sp']):.3f}", f"{float(r['auc']):.3f}",
                      f"{float(r['pred_ratio']):.3f}"])
+    R.caption("表 A1　20 张图的 C3 指标（OOF）")
     R.table(["图号", "Dice", "Se", "Sp", "AUC", "预测面积比"], rows,
             widths=[2.4, 3.0, 3.0, 3.0, 3.0, 3.4])
-    R.caption("表 A1　20 张图的 C3 指标")
+    _ds = sorted(float(r["dice"]) for r in c3.values())
+    R.p(f"逐图差异很大（{_ds[0]:.2f}–{_ds[-1]:.2f}，均 {sum(_ds) / len(_ds):.2f}），说明单张图上的结论不可靠，"
+        "必须看分布；这也是本文坚持报 20 张均值与置信区间的原因。")
 
     R.h1("附录 B　每折选中的超参数")
     rows = []
@@ -531,8 +566,11 @@ def main(results: str, fig_dir: str, out_path: str):
         for rec in folds[key]:
             rows.append([key, str(rec["fold"]), json.dumps(rec["params"], ensure_ascii=False),
                          f"{rec['test_dice']:.4f}"])
-    R.table(["方案", "折", "选中参数", "本折 Dice"], rows, widths=[2.0, 1.6, 9.4, 3.0])
     R.caption("表 B1　交叉验证中每折独立选出的参数")
+    R.table(["方案", "折", "选中参数", "本折 Dice"], rows, widths=[2.0, 1.6, 9.4, 3.0])
+    R.p("五折是各自独立做网格搜索的，结果恰好都选中了同一组超参：C1 为 block=31、C=16；C2 / C3 为 "
+        "q_low=0.85、q_high=0.97（C3 另有 min_area=20、dilate=0）。这从侧面说明参数选择是稳定的，"
+        "而不是把超参固定后再报分。")
 
     R.h1("附录 C　复现步骤")
     for s in [
