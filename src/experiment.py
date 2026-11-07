@@ -56,6 +56,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--folds", type=int, default=N_FOLDS)
     args = ap.parse_args(argv)
 
+    if not os.path.isdir(os.path.join(args.data_dir, "train", "image")):
+        print(f"数据目录不可用：{os.path.abspath(args.data_dir)}（需要 <data>/train/image）")
+        return 2
     os.makedirs(args.out, exist_ok=True)
     cache_dir = os.path.join(args.out, "cache")
 
